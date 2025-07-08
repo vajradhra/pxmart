@@ -15,11 +15,16 @@
   <script src="https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <style>
     #video {
-      min-height: 200px;
+      height: 220px;
       background: #e0e7ef;
       position: relative;
       width: 100%;
       overflow: hidden;
+    }
+    @media (max-width: 640px) {
+      #video {
+        height: 160px;
+      }
     }
     #video video, #video canvas {
       position: absolute;
