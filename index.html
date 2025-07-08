@@ -11,10 +11,9 @@
   <!-- Firebase SDK -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <!-- zxing-js -->
+  <!-- QuaggaJS CDN -->
+  <script src="https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <script type="module">
-    import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm';
-
     // 1. 先定義 config
     const firebaseConfig = {
       apiKey: "AIzaSyDrO_ZeATfLvE2W_F96dVC2y0LrNGdSheU",
@@ -32,6 +31,7 @@
 
     // 條碼快取，避免重複
     let barcodeCache = {};
+    let scanning = false;
 
     // 狀態提示 icon
     function statusIcon(type) {
@@ -82,97 +82,104 @@
       });
     });
 
+    // QuaggaJS 掃描啟動
+    function startScan() {
+      if (scanning) return;
+      scanning = true;
+      setStatus("啟動相機中...", 'info');
+      // 動態設定 constraints，優先用後鏡頭
+      const constraints = {
+        width: { min: 320 },
+        height: { min: 200 },
+        facingMode: { ideal: "environment" }
+      };
+      Quagga.init({
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: document.querySelector('#video'),
+          constraints: constraints,
+        },
+        decoder: {
+          readers: [
+            "code_128_reader",
+            "ean_reader",
+            "ean_8_reader",
+            "code_39_reader",
+            "code_39_vin_reader",
+            "codabar_reader",
+            "upc_reader",
+            "upc_e_reader",
+            "i2of5_reader",
+            "2of5_reader",
+            "code_93_reader"
+          ]
+        },
+        locate: true
+      }, function(err) {
+        if (err) {
+          setStatus("啟動失敗: " + err, 'error');
+          alert("啟動失敗: " + err);
+          scanning = false;
+          return;
+        }
+        Quagga.start();
+        setStatus("請將條碼對準鏡頭...", 'info');
+      });
+      Quagga.onDetected(onBarcodeDetected);
+    }
+
+    // QuaggaJS 掃描停止
+    function stopScan() {
+      if (!scanning) return;
+      Quagga.stop();
+      Quagga.offDetected(onBarcodeDetected);
+      scanning = false;
+      setStatus("已停止掃描", 'info');
+      // 關閉 video 畫面
+      const video = document.querySelector('#video video');
+      if (video && video.srcObject) {
+        video.srcObject.getTracks().forEach(track => track.stop());
+        video.srcObject = null;
+      }
+    }
+
+    // 條碼偵測處理
+    function onBarcodeDetected(result) {
+      if (!result || !result.codeResult || !result.codeResult.code) return;
+      const barcode = result.codeResult.code;
+      const format = result.codeResult.format || 'UNKNOWN';
+      if (barcodeCache[barcode]) {
+        setStatus("此條碼已錄入，請勿重複掃描！", 'warn');
+        alert("條碼重複！");
+        stopScan();
+        return;
+      }
+      setStatus("條碼識別成功，錄入 Firebase 中...", 'info');
+      alert("掃描成功！條碼：" + barcode);
+      stopScan();
+      db.collection("barcodes").add({
+        barcode: barcode,
+        format: format,
+        timestamp: new Date()
+      }).then(() => {
+        setStatus("錄入成功！", 'success');
+        loadBarcodes();
+      }).catch((error) => {
+        setStatus("錄入失敗: " + error, 'error');
+        alert("錄入失敗: " + error);
+        console.error("Firestore 寫入失敗", error);
+      });
+    }
+
     window.onload = () => {
       loadBarcodes();
-
-      const codeReader = new BrowserMultiFormatReader();
-      const video = document.getElementById('video');
       const status = $("#status");
-
-      function setStatus(msg, type) {
-        let color = 'bg-gray-100 text-gray-700';
-        if(type === 'success') color = 'bg-green-100 text-green-700';
-        if(type === 'error') color = 'bg-red-100 text-red-700';
-        if(type === 'warn') color = 'bg-yellow-100 text-yellow-700';
-        if(type === 'info') color = 'bg-blue-100 text-blue-700';
-        status.html(`<span class="inline-flex items-center px-2 py-1 rounded ${color} font-bold">${msg}</span>`);
-      }
-
-      async function startScan(preferRear = true) {
-        setStatus("啟動相機中...", 'info');
-        try {
-          const devices = await BrowserMultiFormatReader.listVideoInputDevices();
-          if (devices.length === 0) {
-            setStatus("找不到相機裝置", 'error');
-            alert("找不到相機裝置");
-            return;
-          }
-          // 嘗試選擇後鏡頭
-          let deviceId = devices[0].deviceId;
-          if (preferRear && devices.length > 1) {
-            const rear = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear') || d.label.toLowerCase().includes('environment'));
-            if (rear) deviceId = rear.deviceId;
-          }
-          setStatus("請將條碼對準鏡頭...", 'info');
-          codeReader.decodeFromVideoDevice(deviceId, video, async (result, err) => {
-            if (result) {
-              const barcode = result.text;
-              const format = result.barcodeFormat || (result.format && result.format.name) || 'UNKNOWN';
-              if (!barcode) {
-                setStatus("未偵測到條碼，請重試。", 'warn');
-                alert("未偵測到條碼，請重試。");
-                return;
-              }
-              if (barcodeCache[barcode]) {
-                setStatus("此條碼已錄入，請勿重複掃描！", 'warn');
-                alert("條碼重複！");
-                codeReader.reset();
-                return;
-              }
-              setStatus("條碼識別成功，錄入 Firebase 中...", 'info');
-              alert("掃描成功！條碼：" + barcode);
-              codeReader.reset();
-              db.collection("barcodes").add({
-                barcode: barcode,
-                format: format,
-                timestamp: new Date()
-              }).then(() => {
-                setStatus("錄入成功！", 'success');
-                loadBarcodes();
-              }).catch((error) => {
-                setStatus("錄入失敗: " + error, 'error');
-                alert("錄入失敗: " + error);
-                console.error("Firestore 寫入失敗", error);
-              });
-            }
-            if (err && !(err instanceof ZXing.NotFoundException)) {
-              setStatus("掃描錯誤: " + err, 'error');
-              alert("掃描錯誤: " + err);
-            }
-          });
-        } catch (e) {
-          if (preferRear) {
-            // 後鏡頭失敗自動 fallback 前鏡頭
-            startScan(false);
-          } else {
-            setStatus("啟動失敗: " + e, 'error');
-            alert("啟動失敗: " + e);
-          }
-        }
-      }
-
       $("#start").click(function() {
-        startScan(true);
+        startScan();
       });
-
       $("#stop").click(function() {
-        codeReader.reset();
-        // 強制關閉 video
-        if (video && video.srcObject) {
-          video.srcObject.getTracks().forEach(track => track.stop());
-          video.srcObject = null;
-        }
-        setStatus("已停止掃描", 'info');
+        stopScan();
       });
     };
   </script>
