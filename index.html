@@ -44,7 +44,7 @@
 
     // 條碼列表載入
     function loadBarcodes() {
-      db.collection("barcodes").orderBy("timestamp", "desc").get().then((querySnapshot) => {
+      db.collection("barcodes").get().then((querySnapshot) => {
         $("#barcode-list").empty();
         barcodeCache = {};
         if (querySnapshot.empty) {
