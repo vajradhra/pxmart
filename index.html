@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>商品條碼掃描錄入</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- jQuery CDN -->
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <!-- zxing-js -->
+  <script type="module">
+    import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm';
+
+    // 請填入你的 Firebase 設定
+    const firebaseConfig = {
+      apiKey: "你的apiKey",
+      authDomain: "你的authDomain",
+      projectId: "你的projectId",
+      storageBucket: "你的storageBucket",
+      messagingSenderId: "你的messagingSenderId",
+      appId: "你的appId"
+    };
+
+    // 初始化 Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    // 條碼快取，避免重複
+    let barcodeCache = {};
+
+    // 狀態提示 icon
+    function statusIcon(type) {
+      if(type === 'success') return '<span class="inline-block align-middle mr-1 text-green-600">✔️</span>';
+      if(type === 'error') return '<span class="inline-block align-middle mr-1 text-red-600">❌</span>';
+      if(type === 'warn') return '<span class="inline-block align-middle mr-1 text-yellow-500">⚠️</span>';
+      if(type === 'info') return '<span class="inline-block align-middle mr-1 text-blue-600">ℹ️</span>';
+      return '';
+    }
+
+    // 讀取現有條碼
+    function loadBarcodes() {
+      db.collection("barcodes").orderBy("timestamp", "desc").get().then((querySnapshot) => {
+        $("#barcode-list").empty();
+        barcodeCache = {};
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          barcodeCache[data.barcode] = doc.id;
+          $("#barcode-list").append(`
+            <li class="flex items-center justify-between px-4 py-2 bg-white rounded-xl shadow mb-2 border-b border-blue-100 hover:bg-blue-50 transition group">
+              <span class="font-mono text-lg tracking-widest text-blue-900">${data.barcode}</span>
+              <button class="delete-btn flex items-center bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full shadow transition group-hover:scale-110" data-id="${doc.id}" data-barcode="${data.barcode}">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>刪除
+              </button>
+            </li>
+          `);
+        });
+      });
+    }
+
+    // 刪除條碼
+    $(document).on("click", ".delete-btn", function() {
+      const id = $(this).data("id");
+      const barcode = $(this).data("barcode");
+      db.collection("barcodes").doc(id).delete().then(() => {
+        delete barcodeCache[barcode];
+        loadBarcodes();
+      });
+    });
+
+    window.onload = () => {
+      loadBarcodes();
+
+      const codeReader = new BrowserMultiFormatReader();
+      const video = document.getElementById('video');
+      const status = $("#status");
+
+      function setStatus(msg, type) {
+        let color = 'bg-gray-100 text-gray-700';
+        if(type === 'success') color = 'bg-green-100 text-green-700';
+        if(type === 'error') color = 'bg-red-100 text-red-700';
+        if(type === 'warn') color = 'bg-yellow-100 text-yellow-700';
+        if(type === 'info') color = 'bg-blue-100 text-blue-700';
+        status.html(`<span class="inline-flex items-center px-2 py-1 rounded ${color} font-bold animate-fadein">${statusIcon(type)}${msg}</span>`);
+      }
+
+      $("#start").click(async function() {
+        setStatus("啟動相機中...", 'info');
+        try {
+          const devices = await BrowserMultiFormatReader.listVideoInputDevices();
+          if (devices.length === 0) {
+            setStatus("找不到相機裝置", 'error');
+            return;
+          }
+          setStatus("請將條碼對準鏡頭...", 'info');
+          codeReader.decodeFromVideoDevice(devices[0].deviceId, video, async (result, err) => {
+            if (result) {
+              const barcode = result.text;
+              if (barcodeCache[barcode]) {
+                setStatus("此條碼已錄入，請勿重複掃描！", 'warn');
+                codeReader.reset();
+                return;
+              }
+              setStatus("條碼識別成功，錄入 Firebase 中...", 'info');
+              codeReader.reset();
+              db.collection("barcodes").add({
+                barcode: barcode,
+                timestamp: new Date()
+              }).then(() => {
+                setStatus("錄入成功！", 'success');
+                loadBarcodes();
+              }).catch((error) => {
+                setStatus("錄入失敗: " + error, 'error');
+              });
+            }
+            if (err && !(err instanceof ZXing.NotFoundException)) {
+              setStatus("掃描錯誤: " + err, 'error');
+            }
+          });
+        } catch (e) {
+          setStatus("啟動失敗: " + e, 'error');
+        }
+      });
+
+      $("#stop").click(function() {
+        codeReader.reset();
+        setStatus("已停止掃描", 'info');
+      });
+    };
+  </script>
+  <style>
+    @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+    .animate-fadein { animation: fadein 0.5s; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-400 via-blue-200 to-blue-100 min-h-screen">
+  <div class="max-w-xl mx-auto mt-10 p-6 bg-white/90 rounded-3xl shadow-2xl border border-blue-200 backdrop-blur-md">
+    <div class="flex flex-col items-center mb-8">
+      <div class="rounded-full bg-white shadow-lg p-3 mb-2">
+        <img src="https://cdn-icons-png.flaticon.com/512/1041/1041916.png" alt="Logo" class="w-16 h-16">
+      </div>
+      <h1 class="text-4xl font-extrabold text-blue-700 tracking-wide mb-1 drop-shadow">PXmart 條碼錄入</h1>
+      <p class="text-gray-500 text-base">快速掃描、管理商品條碼</p>
+    </div>
+    <div class="flex flex-col items-center mb-8">
+      <video id="video" width="320" height="200" class="border-4 border-blue-300 rounded-2xl mb-2 shadow-lg"></video>
+      <div>
+        <button id="start" class="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-6 py-2 rounded-xl font-bold shadow-lg mr-2 transition transform hover:scale-105 active:scale-95 duration-150">開始掃描</button>
+        <button id="stop" class="bg-gradient-to-r from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white px-6 py-2 rounded-xl font-bold shadow-lg transition transform hover:scale-105 active:scale-95 duration-150">停止掃描</button>
+      </div>
+      <p id="status" class="mt-4"></p>
+    </div>
+    <h3 class="text-xl font-semibold mb-3 text-blue-700 border-b pb-2">已錄入條碼</h3>
+    <ul id="barcode-list" class="mb-4"></ul>
+    <p class="text-xs text-gray-400 text-center">點擊刪除可移除條碼（同步刪除 Firebase 資料）</p>
+  </div>
+</body>
+</html> 
