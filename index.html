@@ -51,11 +51,16 @@
         querySnapshot.forEach((doc) => {
           const data = doc.data();
           barcodeCache[data.barcode] = doc.id;
+          // 條碼類型顯示，預設為 UNKNOWN
+          const type = data.format || 'UNKNOWN';
           $("#barcode-list").append(`
-            <li class="flex items-center justify-between px-4 py-2 bg-white rounded-xl shadow mb-2 border-b border-blue-100 hover:bg-blue-50 transition group">
-              <span class="font-mono text-lg tracking-widest text-blue-900">${data.barcode}</span>
-              <button class="delete-btn flex items-center bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-full shadow transition group-hover:scale-110" data-id="${doc.id}" data-barcode="${data.barcode}">
-                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>刪除
+            <li class="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-xl shadow-sm mb-2 border-b border-gray-200">
+              <div class="flex flex-col">
+                <span class="font-mono text-lg text-blue-900">${data.barcode}</span>
+                <span class="text-xs text-gray-400">${type}</span>
+              </div>
+              <button class="delete-btn flex items-center justify-center bg-red-500 hover:bg-red-700 text-white w-8 h-8 rounded-full shadow transition" data-id="${doc.id}" data-barcode="${data.barcode}">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
               </button>
             </li>
           `);
@@ -108,6 +113,7 @@
           codeReader.decodeFromVideoDevice(deviceId, video, async (result, err) => {
             if (result) {
               const barcode = result.text;
+              const format = result.barcodeFormat || (result.format && result.format.name) || 'UNKNOWN';
               if (!barcode) {
                 setStatus("未偵測到條碼，請重試。", 'warn');
                 alert("未偵測到條碼，請重試。");
@@ -124,6 +130,7 @@
               codeReader.reset();
               db.collection("barcodes").add({
                 barcode: barcode,
+                format: format,
                 timestamp: new Date()
               }).then(() => {
                 setStatus("錄入成功！", 'success');
@@ -161,24 +168,24 @@
   </script>
 </head>
 <body class="bg-gradient-to-br from-blue-400 via-blue-200 to-blue-100 min-h-screen">
-  <div class="max-w-xl w-full sm:max-w-full mx-auto mt-10 p-6 sm:p-2 bg-white/90 rounded-3xl sm:rounded-xl shadow-2xl sm:shadow-lg border border-blue-200 backdrop-blur-md">
-    <div class="flex flex-col items-center mb-8 sm:mb-4">
-      <div class="rounded-full bg-white shadow-lg p-3 sm:p-1 mb-2">
-        <img src="https://cdn-icons-png.flaticon.com/512/1041/1041916.png" alt="Logo" class="w-16 h-16 sm:w-10 sm:h-10">
+  <div class="max-w-xl w-full sm:max-w-full mx-auto mt-10 p-4 sm:p-6 bg-white/90 rounded-3xl sm:rounded-xl shadow-2xl sm:shadow-lg border border-blue-200 backdrop-blur-md">
+    <div class="flex flex-col items-center mb-6 sm:mb-8">
+      <div class="rounded-full bg-white shadow-lg p-2 sm:p-3 mb-2">
+        <img src="https://cdn-icons-png.flaticon.com/512/1041/1041916.png" alt="Logo" class="w-14 h-14 sm:w-16 sm:h-16">
       </div>
-      <h1 class="text-4xl sm:text-2xl font-extrabold text-blue-700 tracking-wide mb-1 drop-shadow text-center">PXmart 條碼錄入</h1>
-      <p class="text-gray-500 text-base sm:text-sm text-center">快速掃描、管理商品條碼</p>
+      <h1 class="text-2xl sm:text-4xl font-extrabold text-blue-700 tracking-wide mb-1 drop-shadow text-center">PXmart 條碼錄入</h1>
+      <p class="text-gray-500 text-sm sm:text-base text-center">快速掃描、管理商品條碼</p>
     </div>
-    <div class="flex flex-col items-center mb-8 sm:mb-4">
-      <video id="video" class="w-full max-w-xs sm:max-w-full border-4 sm:border-2 border-blue-300 rounded-2xl sm:rounded-lg mb-2 shadow-lg" style="height:auto;"></video>
-      <div>
-        <button id="start" class="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-6 sm:px-3 py-2 sm:py-1 rounded-xl sm:rounded-lg font-bold shadow-lg mr-2 transition transform hover:scale-105 active:scale-95 duration-150 text-base sm:text-sm">開始掃描</button>
-        <button id="stop" class="bg-gradient-to-r from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white px-6 sm:px-3 py-2 sm:py-1 rounded-xl sm:rounded-lg font-bold shadow-lg transition transform hover:scale-105 active:scale-95 duration-150 text-base sm:text-sm">停止掃描</button>
+    <div class="flex flex-col items-center mb-6 sm:mb-8 w-full">
+      <video id="video" class="w-full max-w-xs sm:max-w-full border-2 sm:border-4 border-blue-300 rounded-xl sm:rounded-2xl mb-2 shadow-lg" style="height:auto;"></video>
+      <div class="flex flex-row flex-wrap justify-center w-full">
+        <button id="start" class="bg-gradient-to-r from-blue-500 to-blue-700 hover:from-blue-600 hover:to-blue-800 text-white px-4 sm:px-6 py-2 rounded-lg sm:rounded-xl font-bold shadow-lg mr-2 mb-2 transition transform hover:scale-105 active:scale-95 duration-150 text-sm sm:text-base">開始掃描</button>
+        <button id="stop" class="bg-gradient-to-r from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white px-4 sm:px-6 py-2 rounded-lg sm:rounded-xl font-bold shadow-lg mb-2 transition transform hover:scale-105 active:scale-95 duration-150 text-sm sm:text-base">停止掃描</button>
       </div>
-      <p id="status" class="mt-4 sm:mt-2 w-full text-center"></p>
+      <p id="status" class="mt-2 sm:mt-4 w-full text-center"></p>
     </div>
-    <h3 class="text-xl sm:text-lg font-semibold mb-3 sm:mb-2 text-blue-700 border-b pb-2 text-center">已錄入條碼</h3>
-    <ul id="barcode-list" class="mb-4 sm:mb-2"></ul>
+    <h3 class="text-lg sm:text-xl font-semibold mb-2 sm:mb-3 text-blue-700 border-b pb-2 text-center">已錄入條碼</h3>
+    <ul id="barcode-list" class="mb-2 sm:mb-4"></ul>
     <p class="text-xs text-gray-400 text-center">點擊刪除可移除條碼（同步刪除 Firebase 資料）</p>
   </div>
 </body>
