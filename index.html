@@ -15,7 +15,7 @@
   <script type="module">
     import { BrowserMultiFormatReader } from 'https://cdn.jsdelivr.net/npm/@zxing/browser@0.0.10/+esm';
 
-    // 請填入你的 Firebase 設定
+    // 1. 先定義 config
     const firebaseConfig = {
       apiKey: "AIzaSyDrO_ZeATfLvE2W_F96dVC2y0LrNGdSheU",
       authDomain: "pxmart-89ff3.firebaseapp.com",
@@ -25,9 +25,9 @@
       appId: "1:235750836407:web:8c6fc39782c43cba266532",
       measurementId: "G-2H4BF91YK0"
     };
-
-    // 初始化 Firebase
+    // 2. 初始化
     firebase.initializeApp(firebaseConfig);
+    // 3. 取得 db
     const db = firebase.firestore();
 
     // 條碼快取，避免重複
@@ -42,28 +42,33 @@
       return '';
     }
 
-    // 讀取現有條碼
+    // 條碼列表載入
     function loadBarcodes() {
       db.collection("barcodes").orderBy("timestamp", "desc").get().then((querySnapshot) => {
         $("#barcode-list").empty();
         barcodeCache = {};
-        querySnapshot.forEach((doc) => {
-          const data = doc.data();
-          barcodeCache[data.barcode] = doc.id;
-          // 條碼類型顯示，預設為 UNKNOWN
-          const type = data.format || 'UNKNOWN';
-          $("#barcode-list").append(`
-            <li class="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-xl shadow-sm mb-2 border-b border-gray-200">
-              <div class="flex flex-col">
-                <span class="font-mono text-lg text-blue-900">${data.barcode}</span>
-                <span class="text-xs text-gray-400">${type}</span>
-              </div>
-              <button class="delete-btn flex items-center justify-center bg-red-500 hover:bg-red-700 text-white w-8 h-8 rounded-full shadow transition" data-id="${doc.id}" data-barcode="${data.barcode}">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-              </button>
-            </li>
-          `);
-        });
+        if (querySnapshot.empty) {
+          $("#barcode-list").append('<li class="text-center text-gray-400 text-sm py-4 w-full">尚無條碼資料</li>');
+        } else {
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            barcodeCache[data.barcode] = doc.id;
+            const type = data.format || 'UNKNOWN';
+            $("#barcode-list").append(`
+              <li class="flex items-center justify-between px-4 py-2 bg-gray-50 rounded-xl shadow-sm mb-2 border-b border-gray-200">
+                <div class="flex flex-col">
+                  <span class="font-mono text-lg text-blue-900">${data.barcode}</span>
+                  <span class="text-xs text-gray-400">${type}</span>
+                </div>
+                <button class="delete-btn flex items-center justify-center bg-red-500 hover:bg-red-700 text-white w-8 h-8 rounded-full shadow transition" data-id="${doc.id}" data-barcode="${data.barcode}">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+              </li>
+            `);
+          });
+        }
+      }).catch((err) => {
+        showConnectionStatus(false, err.message);
       });
     }
 
@@ -164,45 +169,6 @@
         setStatus("已停止掃描", 'info');
       });
     };
-  </script>
-  <script>
-    // Firebase 連線狀態偵測
-    function showConnectionStatus(online) {
-      let bar = document.getElementById('firebase-conn-status');
-      if (!bar) {
-        bar = document.createElement('div');
-        bar.id = 'firebase-conn-status';
-        bar.className = 'fixed top-4 right-4 z-50 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded shadow-lg';
-        bar.style.minWidth = '160px';
-        bar.style.maxWidth = '80vw';
-        bar.style.textAlign = 'center';
-        bar.textContent = 'Firebase 連線異常';
-        document.body.appendChild(bar);
-      }
-      if (online) {
-        bar.style.display = 'none';
-      } else {
-        bar.style.display = 'block';
-      }
-    }
-    // Firestore 連線監控
-    let firstError = true;
-    firebase.firestore().onSnapshotsInSync(() => {
-      showConnectionStatus(true);
-    });
-    firebase.firestore().collection('barcodes').onSnapshot({
-      next: () => {
-        showConnectionStatus(true);
-      },
-      error: (err) => {
-        if (firstError) {
-          showConnectionStatus(false);
-          firstError = false;
-        }
-      }
-    });
-    window.addEventListener('online', () => showConnectionStatus(true));
-    window.addEventListener('offline', () => showConnectionStatus(false));
   </script>
 </head>
 <body class="bg-gradient-to-br from-blue-400 via-blue-200 to-blue-100 min-h-screen">
