@@ -142,6 +142,7 @@
               }).catch((error) => {
                 setStatus("錄入失敗: " + error, 'error');
                 alert("錄入失敗: " + error);
+                console.error("Firestore 寫入失敗", error);
               });
             }
             if (err && !(err instanceof ZXing.NotFoundException)) {
@@ -166,6 +167,11 @@
 
       $("#stop").click(function() {
         codeReader.reset();
+        // 強制關閉 video
+        if (video && video.srcObject) {
+          video.srcObject.getTracks().forEach(track => track.stop());
+          video.srcObject = null;
+        }
         setStatus("已停止掃描", 'info');
       });
     };
