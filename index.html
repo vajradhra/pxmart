@@ -14,16 +14,20 @@
   <!-- QuaggaJS CDN -->
   <script src="https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
   <style>
-    #video video, #video canvas {
-      width: 100% !important;
-      height: 100% !important;
-      display: block;
-      object-fit: cover;
-    }
     #video {
       min-height: 200px;
       background: #e0e7ef;
       position: relative;
+      width: 100%;
+      overflow: hidden;
+    }
+    #video video, #video canvas {
+      position: absolute;
+      left: 0; top: 0;
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+      object-fit: cover;
     }
   </style>
   <script type="module">
