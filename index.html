@@ -20,10 +20,9 @@
       apiKey: "AIzaSyDrO_ZeATfLvE2W_F96dVC2y0LrNGdSheU",
       authDomain: "pxmart-89ff3.firebaseapp.com",
       projectId: "pxmart-89ff3",
-      storageBucket: "pxmart-89ff3.firebasestorage.app",
+      storageBucket: "pxmart-89ff3.appspot.com",
       messagingSenderId: "235750836407",
       appId: "1:235750836407:web:8c6fc39782c43cba266532",
-      databaseURL: "https://pxmart-89ff3-default-rtdb.asia-southeast1.firebasedatabase.app",
       measurementId: "G-2H4BF91YK0"
     };
 
@@ -165,6 +164,43 @@
         setStatus("已停止掃描", 'info');
       });
     };
+  </script>
+  <script>
+    // Firebase 連線狀態偵測
+    function showConnectionStatus(online) {
+      let bar = document.getElementById('firebase-conn-status');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'firebase-conn-status';
+        bar.className = 'fixed top-0 left-0 w-full z-50 text-center py-2 text-white text-sm font-bold';
+        document.body.appendChild(bar);
+      }
+      if (online) {
+        bar.style.display = 'none';
+      } else {
+        bar.textContent = '⚠️ 無法連線至 Firebase，請檢查網路或稍後再試';
+        bar.style.background = '#dc2626'; // tailwind red-600
+        bar.style.display = 'block';
+      }
+    }
+    // Firestore 連線監控
+    let firstError = true;
+    firebase.firestore().onSnapshotsInSync(() => {
+      showConnectionStatus(true);
+    });
+    firebase.firestore().collection('barcodes').onSnapshot({
+      next: () => {
+        showConnectionStatus(true);
+      },
+      error: (err) => {
+        if (firstError) {
+          showConnectionStatus(false);
+          firstError = false;
+        }
+      }
+    });
+    window.addEventListener('online', () => showConnectionStatus(true));
+    window.addEventListener('offline', () => showConnectionStatus(false));
   </script>
 </head>
 <body class="bg-gradient-to-br from-blue-400 via-blue-200 to-blue-100 min-h-screen">
