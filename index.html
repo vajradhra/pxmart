@@ -172,14 +172,16 @@
       if (!bar) {
         bar = document.createElement('div');
         bar.id = 'firebase-conn-status';
-        bar.className = 'fixed top-0 left-0 w-full z-50 text-center py-2 text-white text-sm font-bold';
+        bar.className = 'fixed top-4 right-4 z-50 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded shadow-lg';
+        bar.style.minWidth = '160px';
+        bar.style.maxWidth = '80vw';
+        bar.style.textAlign = 'center';
+        bar.textContent = 'Firebase 連線異常';
         document.body.appendChild(bar);
       }
       if (online) {
         bar.style.display = 'none';
       } else {
-        bar.textContent = '⚠️ 無法連線至 Firebase，請檢查網路或稍後再試';
-        bar.style.background = '#dc2626'; // tailwind red-600
         bar.style.display = 'block';
       }
     }
