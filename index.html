@@ -33,6 +33,17 @@
     let barcodeCache = {};
     let scanning = false;
 
+    // 狀態提示顯示
+    function setStatus(msg, type) {
+      const status = $("#status");
+      let color = 'bg-gray-100 text-gray-700';
+      if(type === 'success') color = 'bg-green-100 text-green-700';
+      if(type === 'error') color = 'bg-red-100 text-red-700';
+      if(type === 'warn') color = 'bg-yellow-100 text-yellow-700';
+      if(type === 'info') color = 'bg-blue-100 text-blue-700';
+      status.html(`<span class="inline-flex items-center px-2 py-1 rounded ${color} font-bold">${msg}</span>`);
+    }
+
     // 狀態提示 icon
     function statusIcon(type) {
       if(type === 'success') return '<span class="inline-block align-middle mr-1 text-green-600">✔️</span>';
@@ -174,7 +185,6 @@
 
     window.onload = () => {
       loadBarcodes();
-      const status = $("#status");
       $("#start").click(function() {
         startScan();
       });
