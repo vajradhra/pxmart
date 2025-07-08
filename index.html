@@ -86,27 +86,41 @@
         if(type === 'error') color = 'bg-red-100 text-red-700';
         if(type === 'warn') color = 'bg-yellow-100 text-yellow-700';
         if(type === 'info') color = 'bg-blue-100 text-blue-700';
-        status.html(`<span class="inline-flex items-center px-2 py-1 rounded ${color} font-bold animate-fadein">${statusIcon(type)}${msg}</span>`);
+        status.html(`<span class="inline-flex items-center px-2 py-1 rounded ${color} font-bold">${msg}</span>`);
       }
 
-      $("#start").click(async function() {
+      async function startScan(preferRear = true) {
         setStatus("啟動相機中...", 'info');
         try {
           const devices = await BrowserMultiFormatReader.listVideoInputDevices();
           if (devices.length === 0) {
             setStatus("找不到相機裝置", 'error');
+            alert("找不到相機裝置");
             return;
           }
+          // 嘗試選擇後鏡頭
+          let deviceId = devices[0].deviceId;
+          if (preferRear && devices.length > 1) {
+            const rear = devices.find(d => d.label.toLowerCase().includes('back') || d.label.toLowerCase().includes('rear') || d.label.toLowerCase().includes('environment'));
+            if (rear) deviceId = rear.deviceId;
+          }
           setStatus("請將條碼對準鏡頭...", 'info');
-          codeReader.decodeFromVideoDevice(devices[0].deviceId, video, async (result, err) => {
+          codeReader.decodeFromVideoDevice(deviceId, video, async (result, err) => {
             if (result) {
               const barcode = result.text;
+              if (!barcode) {
+                setStatus("未偵測到條碼，請重試。", 'warn');
+                alert("未偵測到條碼，請重試。");
+                return;
+              }
               if (barcodeCache[barcode]) {
                 setStatus("此條碼已錄入，請勿重複掃描！", 'warn');
+                alert("條碼重複！");
                 codeReader.reset();
                 return;
               }
               setStatus("條碼識別成功，錄入 Firebase 中...", 'info');
+              alert("掃描成功！條碼：" + barcode);
               codeReader.reset();
               db.collection("barcodes").add({
                 barcode: barcode,
@@ -116,15 +130,27 @@
                 loadBarcodes();
               }).catch((error) => {
                 setStatus("錄入失敗: " + error, 'error');
+                alert("錄入失敗: " + error);
               });
             }
             if (err && !(err instanceof ZXing.NotFoundException)) {
               setStatus("掃描錯誤: " + err, 'error');
+              alert("掃描錯誤: " + err);
             }
           });
         } catch (e) {
-          setStatus("啟動失敗: " + e, 'error');
+          if (preferRear) {
+            // 後鏡頭失敗自動 fallback 前鏡頭
+            startScan(false);
+          } else {
+            setStatus("啟動失敗: " + e, 'error');
+            alert("啟動失敗: " + e);
+          }
         }
+      }
+
+      $("#start").click(function() {
+        startScan(true);
       });
 
       $("#stop").click(function() {
