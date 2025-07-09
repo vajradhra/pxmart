@@ -13,6 +13,8 @@
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   <!-- QuaggaJS CDN -->
   <script src="https://unpkg.com/@ericblade/quagga2@1.2.6/dist/quagga.min.js"></script>
+  <!-- html5-qrcode CDN -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     #video {
       height: 220px;
@@ -51,9 +53,43 @@
     // 3. 取得 db
     const db = firebase.firestore();
 
+    // 4. 連線狀態偵測
+    function showConnectionStatus(online, msg) {
+      let bar = document.getElementById('firebase-conn-status');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'firebase-conn-status';
+        bar.className = 'fixed top-4 right-4 z-50 px-4 py-2 bg-red-600 text-white text-sm font-bold rounded shadow-lg';
+        bar.style.minWidth = '160px';
+        bar.style.maxWidth = '80vw';
+        bar.style.textAlign = 'center';
+        document.body.appendChild(bar);
+      }
+      if (online) {
+        bar.style.display = 'none';
+      } else {
+        bar.textContent = msg ? `Firebase 連線異常：${msg}` : 'Firebase 連線異常';
+        bar.style.display = 'block';
+      }
+    }
+    firebase.firestore().onSnapshotsInSync(() => {
+      showConnectionStatus(true);
+    });
+    firebase.firestore().collection('barcodes').onSnapshot({
+      next: () => {
+        showConnectionStatus(true);
+      },
+      error: (err) => {
+        showConnectionStatus(false, err.message);
+      }
+    });
+    window.addEventListener('online', () => showConnectionStatus(true));
+    window.addEventListener('offline', () => showConnectionStatus(false));
+
     // 條碼快取，避免重複
     let barcodeCache = {};
     let scanning = false;
+    let html5QrcodeScanner = null;
 
     // 狀態提示顯示
     function setStatus(msg, type) {
@@ -77,7 +113,7 @@
 
     // 條碼列表載入
     function loadBarcodes() {
-      db.collection("barcodes").get().then((querySnapshot) => {
+      db.collection("barcodes").orderBy("timestamp", "desc").get().then((querySnapshot) => {
         $("#barcode-list").empty();
         barcodeCache = {};
         if (querySnapshot.empty) {
@@ -115,82 +151,79 @@
       });
     });
 
-    // QuaggaJS 掃描啟動
+    // html5-qrcode 掃描啟動
     function startScan() {
       if (scanning) return;
       scanning = true;
       setStatus("啟動相機中...", 'info');
-      // 動態設定 constraints，優先用後鏡頭
-      const constraints = {
-        width: { min: 320 },
-        height: { min: 200 },
-        facingMode: { ideal: "environment" }
+      
+      const config = {
+        fps: 10,
+        qrbox: { width: 250, height: 150 },
+        aspectRatio: 1.0,
+        supportedScanTypes: [
+          Html5QrcodeScanType.SCAN_TYPE_CAMERA
+        ],
+        formatsToSupport: [
+          Html5QrcodeSupportedFormats.CODE_128,
+          Html5QrcodeSupportedFormats.EAN_13,
+          Html5QrcodeSupportedFormats.EAN_8,
+          Html5QrcodeSupportedFormats.CODE_39,
+          Html5QrcodeSupportedFormats.CODABAR,
+          Html5QrcodeSupportedFormats.UPC_A,
+          Html5QrcodeSupportedFormats.UPC_E,
+          Html5QrcodeSupportedFormats.ITF14,
+          Html5QrcodeSupportedFormats.ITF,
+          Html5QrcodeSupportedFormats.CODE_93
+        ]
       };
-      Quagga.init({
-        inputStream: {
-          name: "Live",
-          type: "LiveStream",
-          target: document.querySelector('#video'),
-          constraints: constraints,
-        },
-        decoder: {
-          readers: [
-            "code_128_reader",
-            "ean_reader",
-            "ean_8_reader",
-            "code_39_reader",
-            "code_39_vin_reader",
-            "codabar_reader",
-            "upc_reader",
-            "upc_e_reader",
-            "i2of5_reader",
-            "2of5_reader",
-            "code_93_reader"
-          ]
-        },
-        locate: true
-      }, function(err) {
-        if (err) {
-          setStatus("啟動失敗: " + err, 'error');
-          alert("啟動失敗: " + err);
-          scanning = false;
-          return;
-        }
-        Quagga.start();
+
+      html5QrcodeScanner = new Html5Qrcode("video");
+      html5QrcodeScanner.start(
+        { facingMode: "environment" },
+        config,
+        onScanSuccess,
+        onScanFailure
+      ).then(() => {
         setStatus("請將條碼對準鏡頭...", 'info');
+      }).catch((err) => {
+        setStatus("啟動失敗: " + err, 'error');
+        alert("啟動失敗: " + err);
+        console.error("html5-qrcode 啟動失敗", err);
+        scanning = false;
       });
-      Quagga.onDetected(onBarcodeDetected);
     }
 
-    // QuaggaJS 掃描停止
+    // html5-qrcode 掃描停止
     function stopScan() {
-      if (!scanning) return;
-      Quagga.stop();
-      Quagga.offDetected(onBarcodeDetected);
-      scanning = false;
-      setStatus("已停止掃描", 'info');
-      // 關閉 video 畫面
-      const video = document.querySelector('#video video');
-      if (video && video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
-        video.srcObject = null;
-      }
+      if (!scanning || !html5QrcodeScanner) return;
+      html5QrcodeScanner.stop().then(() => {
+        scanning = false;
+        setStatus("已停止掃描", 'info');
+      }).catch((err) => {
+        console.error("停止掃描失敗", err);
+        scanning = false;
+        setStatus("已停止掃描", 'info');
+      });
     }
 
-    // 條碼偵測處理
-    function onBarcodeDetected(result) {
-      if (!result || !result.codeResult || !result.codeResult.code) return;
-      const barcode = result.codeResult.code;
-      const format = result.codeResult.format || 'UNKNOWN';
+    // 掃描成功處理
+    function onScanSuccess(decodedText, decodedResult) {
+      if (!decodedText) return;
+      const barcode = decodedText;
+      const format = decodedResult.format || 'UNKNOWN';
+      
       if (barcodeCache[barcode]) {
         setStatus("此條碼已錄入，請勿重複掃描！", 'warn');
         alert("條碼重複！");
         stopScan();
         return;
       }
+      
       setStatus("條碼識別成功，錄入 Firebase 中...", 'info');
       alert("掃描成功！條碼：" + barcode);
       stopScan();
+      
       db.collection("barcodes").add({
         barcode: barcode,
         format: format,
@@ -204,6 +237,11 @@
         alert("錄入失敗: " + error);
         console.error("Firestore 寫入失敗", error);
       });
+    }
+
+    // 掃描失敗處理
+    function onScanFailure(error) {
+      // 忽略掃描失敗，繼續掃描
     }
 
     window.onload = () => {
