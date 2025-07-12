@@ -17,15 +17,17 @@
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
   <style>
     #video {
-      height: 220px;
+      width: 100%;
+      max-width: 300px;
+      aspect-ratio: 1;
       background: #e0e7ef;
       position: relative;
-      width: 100%;
       overflow: hidden;
+      margin: 0 auto;
     }
     @media (max-width: 640px) {
       #video {
-        height: 160px;
+        max-width: 250px;
       }
     }
     #video video, #video canvas {
